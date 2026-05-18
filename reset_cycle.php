@@ -10,7 +10,7 @@ if (!isset($_SESSION['UID']) || $_SESSION['role'] !== 'End User') {
 $uid = $_SESSION['UID'];
 
 // --- 1. Fetch current cycle data ---
-$sql = "SELECT totalAllowance, cycleStartDate, savingsBalance FROM END_USER WHERE UID = ?";
+$sql = "SELECT totalAllowance, allowanceCycle, cycleStartDate, savingsBalance FROM END_USER WHERE UID = ?";
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("i", $uid);
 $stmt->execute();
@@ -30,24 +30,22 @@ $gainsStmt->bind_param("is", $uid, $user['cycleStartDate']);
 $gainsStmt->execute();
 $totalGains = $gainsStmt->get_result()->fetch_assoc()['totalGains'] ?? 0;
 
-// Correct Leftover Math: (Allowance + Gains) - Spent
 $leftoverFunds = ($user['totalAllowance'] + $totalGains) - $totalSpent;
 
 // --- 4. Handle Form Submission ---
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $action = $_POST['action'];
     $newAllowance = $_POST['totalAllowance']; 
+    $newCycle = $_POST['allowanceCycle'];
 
     $conn->begin_transaction();
     try {
         if ($action == 'carry_over' && $leftoverFunds > 0) {
-            // Use NOW() directly in the SQL string
-            $update = $conn->prepare("UPDATE END_USER SET savingsBalance = savingsBalance + ?, cycleStartDate = NOW(), totalAllowance = ? WHERE UID = ?");
-            $update->bind_param("ddi", $leftoverFunds, $newAllowance, $uid);
+            $update = $conn->prepare("UPDATE END_USER SET savingsBalance = savingsBalance + ?, cycleStartDate = NOW(), totalAllowance = ?, allowanceCycle = ? WHERE UID = ?");
+            $update->bind_param("ddsi", $leftoverFunds, $newAllowance, $newCycle, $uid);
         } else {
-            // Use NOW() directly in the SQL string
-            $update = $conn->prepare("UPDATE END_USER SET cycleStartDate = NOW(), totalAllowance = ? WHERE UID = ?");
-            $update->bind_param("di", $newAllowance, $uid);
+            $update = $conn->prepare("UPDATE END_USER SET cycleStartDate = NOW(), totalAllowance = ?, allowanceCycle = ? WHERE UID = ?");
+            $update->bind_param("dsi", $newAllowance, $newCycle, $uid);
         }
         $update->execute();
 
@@ -143,7 +141,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             margin-bottom: 8px;
         }
 
-        .allowance-setup input {
+        .allowance-setup input, .allowance-setup select {
             width: 100%;
             padding: 12px;
             border: 1px solid var(--border);
@@ -152,13 +150,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             font-weight: 600;
             box-sizing: border-box;
             color: var(--primary);
+            margin-bottom: 15px;
         }
 
-        .decision-grid {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 15px;
-        }
+        .decision-grid { display: grid; grid-template-columns: 1fr; gap: 15px; }
 
         .action-btn {
             padding: 16px;
@@ -179,7 +174,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         .action-title { display: block; font-weight: 700; font-size: 1rem; margin-bottom: 4px; }
         .action-desc { display: block; font-size: 0.8rem; color: #64748b; line-height: 1.4; }
-
         .carry-over .action-title { color: #166534; }
         .hard-reset .action-title { color: #991b1b; }
 
@@ -191,6 +185,36 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             font-size: 0.9rem;
             font-weight: 600;
         }
+
+        /* Custom Modal Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(2px);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-box {
+            background: var(--card);
+            padding: 30px;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 350px;
+            text-align: center;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        .modal-box h3 { margin: 0 0 10px 0; color: var(--primary); }
+        .modal-box p { font-size: 0.9rem; color: #64748b; margin-bottom: 25px; }
+
+        .modal-actions { display: flex; gap: 10px; }
+        .modal-actions button { flex: 1; padding: 12px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; }
+        .modal-btn-cancel { background: #f1f5f9; color: #475569; }
+        .modal-btn-confirm { background: var(--accent); color: white; }
     </style>
 </head>
 <body>
@@ -218,21 +242,28 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         </div>
     </div>
 
-    <form method="POST">
+    <form id="resetForm" method="POST">
         <div class="allowance-setup">
+            <label for="allowanceCycle">Next Cycle's Duration</label>
+            <select name="allowanceCycle" id="allowanceCycle" required>
+                <option value="Daily" <?= $user['allowanceCycle'] == 'Daily' ? 'selected' : '' ?>>Daily</option>
+                <option value="Weekly" <?= $user['allowanceCycle'] == 'Weekly' ? 'selected' : '' ?>>Weekly</option>
+                <option value="Monthly" <?= $user['allowanceCycle'] == 'Monthly' ? 'selected' : '' ?>>Monthly</option>
+            </select>
+
             <label for="totalAllowance">Next Cycle's Base Allowance (₱)</label>
             <input type="number" step="0.01" name="totalAllowance" id="totalAllowance" value="<?= $user['totalAllowance'] ?>" required>
         </div>
 
         <div class="decision-grid">
             <?php if ($leftoverFunds > 0): ?>
-                <button type="submit" name="action" value="carry_over" class="action-btn carry-over">
+                <button type="button" class="action-btn carry-over" onclick="openModal('carry_over')">
                     <span class="action-title">💰 Carry Over to Savings</span>
                     <span class="action-desc">Add ₱<?= number_format($leftoverFunds, 2) ?> to your Vault and restart.</span>
                 </button>
             <?php endif; ?>
 
-            <button type="submit" name="action" value="reset" class="action-btn hard-reset">
+            <button type="button" class="action-btn hard-reset" onclick="openModal('reset')">
                 <span class="action-title">♻️ Hard Reset</span>
                 <span class="action-desc">Start fresh. Leftover funds will not be saved.</span>
             </button>
@@ -241,6 +272,41 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     <a href="user_dashboard.php" class="cancel-btn">Back to Dashboard</a>
 </div>
+
+<div id="confirmModal" class="modal-overlay">
+    <div class="modal-box">
+        <h3>Is this information correct?</h3>
+        <p>You are about to modify your core database settings and finalize this cycle.</p>
+        <div class="modal-actions">
+            <button class="modal-btn-cancel" onclick="closeModal()">Cancel</button>
+            <button class="modal-btn-confirm" onclick="submitForm()">Yes, proceed</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let actionToSubmit = '';
+
+    function openModal(action) {
+        actionToSubmit = action;
+        document.getElementById('confirmModal').style.display = 'flex';
+    }
+
+    function closeModal() {
+        document.getElementById('confirmModal').style.display = 'none';
+    }
+
+    function submitForm() {
+        // Create hidden input to carry the selected action
+        let hiddenInput = document.createElement('input');
+        hiddenInput.type = 'hidden';
+        hiddenInput.name = 'action';
+        hiddenInput.value = actionToSubmit;
+        document.getElementById('resetForm').appendChild(hiddenInput);
+        
+        document.getElementById('resetForm').submit();
+    }
+</script>
 
 </body>
 </html>

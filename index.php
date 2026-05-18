@@ -2,19 +2,17 @@
 require 'db_connect.php';
 session_start();
 
-// Security: Only allow Admins
-// if (!isset($_SESSION['UID']) || $_SESSION['role'] !== 'Admin') {
-//     header("Location: login.php");
-//     exit();
-// }
+// Security: Only allow Admins (Uncommented for security based on your setup)
+if (!isset($_SESSION['UID']) || $_SESSION['role'] !== 'Admin') {
+    header("Location: login.php");
+    exit();
+}
 
-// JOIN queries fetch data from both tables based on the matching UID
 $sql = "SELECT U.UID, U.firstName, U.lastName, A.AID, A.department, A.adminLevel 
         FROM USER U 
         JOIN ADMINISTRATOR A ON U.UID = A.UID";
 $result = $conn->query($sql);
 
-// Optional: Get count for a quick stat
 $totalAdmins = $result->num_rows;
 ?>
 
@@ -45,7 +43,6 @@ $totalAdmins = $result->num_rows;
             min-height: 100vh;
         }
 
-        /* Sidebar Look */
         .sidebar {
             width: 260px;
             background-color: var(--primary);
@@ -79,7 +76,6 @@ $totalAdmins = $result->num_rows;
             color: white;
         }
 
-        /* Main Content */
         .main-content {
             flex-grow: 1;
             padding: 40px;
@@ -100,12 +96,12 @@ $totalAdmins = $result->num_rows;
             font-size: 0.9rem;
             transition: 0.2s;
             display: inline-block;
+            cursor: pointer;
         }
 
         .btn-primary { background: var(--accent); color: white; }
         .btn-primary:hover { background: #2563eb; }
 
-        /* Admin Table */
         .table-container {
             background: var(--card);
             border-radius: 12px;
@@ -144,8 +140,8 @@ $totalAdmins = $result->num_rows;
             font-size: 0.75rem;
             font-weight: 600;
         }
-        .level-high { background: #fee2e2; color: #991b1b; } /* For Level 1 or Senior */
-        .level-low { background: #e0f2fe; color: #075985; }  /* For Junior */
+        .level-high { background: #fee2e2; color: #991b1b; } 
+        .level-low { background: #e0f2fe; color: #075985; }  
 
         .actions a {
             color: var(--accent);
@@ -153,14 +149,41 @@ $totalAdmins = $result->num_rows;
             margin-right: 15px;
             font-size: 0.85rem;
             font-weight: 600;
+            cursor: pointer;
         }
         .actions a.delete { color: var(--danger); }
 
-        .stats-summary {
-            margin-bottom: 20px;
-            color: #64748b;
-            font-size: 0.9rem;
+        .stats-summary { margin-bottom: 20px; color: #64748b; font-size: 0.9rem; }
+
+        /* Custom Modal Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(2px);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
         }
+
+        .modal-box {
+            background: var(--card);
+            padding: 30px;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 350px;
+            text-align: center;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        .modal-box h3 { margin: 0 0 10px 0; color: var(--danger); }
+        .modal-box p { font-size: 0.9rem; color: #64748b; margin-bottom: 25px; }
+
+        .modal-actions { display: flex; gap: 10px; }
+        .modal-actions button { flex: 1; padding: 12px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; }
+        .modal-btn-cancel { background: #f1f5f9; color: #475569; }
+        .modal-btn-confirm { background: var(--danger); color: white; }
     </style>
 </head>
 <body>
@@ -172,7 +195,7 @@ $totalAdmins = $result->num_rows;
             <a href="forum.php">Forum Moderation</a>
             <a href="user_dashboard.php">View as User</a>
             <div style="margin-top: auto;">
-                <a href="logout.php" style="color: var(--danger);">Logout</a>
+                <a href="logout.php" style="color: #fca5a5;">Logout</a>
             </div>
         </nav>
     </div>
@@ -206,13 +229,13 @@ $totalAdmins = $result->num_rows;
                         <td><?= htmlspecialchars($row['firstName'] . " " . $row['lastName']) ?></td>
                         <td><?= htmlspecialchars($row['department']) ?></td>
                         <td>
-                            <span class="badge <?= $row['adminLevel'] == 'Senior' ? 'level-high' : 'level-low' ?>">
+                            <span class="badge <?= $row['adminLevel'] == 'Super' ? 'level-high' : 'level-low' ?>">
                                 <?= htmlspecialchars($row['adminLevel']) ?>
                             </span>
                         </td>
                         <td class="actions">
                             <a href="edit.php?id=<?= $row['UID'] ?>">Edit Details</a>
-                            <a href="delete.php?id=<?= $row['UID'] ?>" class="delete" onclick="return confirm('Remove this administrator?')">Delete</a>
+                            <a class="delete" onclick="openDeleteModal('delete.php?id=<?= $row['UID'] ?>')">Delete</a>
                         </td>
                     </tr>
                     <?php endwhile; ?>
@@ -220,6 +243,36 @@ $totalAdmins = $result->num_rows;
             </table>
         </div>
     </div>
+
+    <div id="deleteModal" class="modal-overlay">
+        <div class="modal-box">
+            <h3>Confirm Deletion</h3>
+            <p>Are you sure you want to completely remove this administrator from the system?</p>
+            <div class="modal-actions">
+                <button class="modal-btn-cancel" onclick="closeDeleteModal()">Cancel</button>
+                <button class="modal-btn-confirm" onclick="executeDelete()">Yes, Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let deleteUrl = '';
+
+        function openDeleteModal(url) {
+            deleteUrl = url;
+            document.getElementById('deleteModal').style.display = 'flex';
+        }
+
+        function closeDeleteModal() {
+            document.getElementById('deleteModal').style.display = 'none';
+        }
+
+        function executeDelete() {
+            if(deleteUrl) {
+                window.location.href = deleteUrl;
+            }
+        }
+    </script>
 
 </body>
 </html>
