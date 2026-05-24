@@ -15,14 +15,30 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $conn->begin_transaction();
 
     try {
+        // 1. Create the base User
         $stmt1 = $conn->prepare("INSERT INTO USER (firstName, lastName, password) VALUES (?, ?, ?)");
         $stmt1->bind_param("sss", $firstName, $lastName, $password);
         $stmt1->execute();
         $uid = $conn->insert_id;
 
+        // 2. Create the End User profile
         $stmt2 = $conn->prepare("INSERT INTO END_USER (UID, forumRole, allowanceCycle, totalAllowance, savingsGoal, savingsBalance, cycleStartDate) VALUES (?, ?, ?, ?, ?, ?, ?)");
         $stmt2->bind_param("issddds", $uid, $forumRole, $allowanceCycle, $totalAllowance, $savingsGoal, $savingsBalance, $cycleStartDate);
         $stmt2->execute();
+
+        // 3. Seed Default Categories for the new user
+        $defaultCategories = [
+            ['Food', 'Expense'], ['Transport', 'Expense'], ['Academic', 'Expense'], 
+            ['Social', 'Expense'], ['Other', 'Expense'],
+            ['Allowance', 'Income'], ['Gift', 'Income'], ['Side Hustle', 'Income'], 
+            ['Refund', 'Income'], ['Other', 'Income']
+        ];
+        
+        $stmt3 = $conn->prepare("INSERT INTO user_category (UID, name, type) VALUES (?, ?, ?)");
+        foreach ($defaultCategories as $cat) {
+            $stmt3->bind_param("iss", $uid, $cat[0], $cat[1]);
+            $stmt3->execute();
+        }
 
         $conn->commit();
         header("Location: login.php"); 
