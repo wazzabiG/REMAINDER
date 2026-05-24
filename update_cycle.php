@@ -2,13 +2,14 @@
 require 'db_connect.php';
 session_start();
 
-if (!isset($_SESSION['UID'])) {
+if (!isset($_SESSION['UID']) || $_SESSION['role'] !== 'End User') {
     header("Location: login.php");
     exit();
 }
 
 $uid = $_SESSION['UID'];
 
+// Fetch current cycle to show as selected
 $stmt_current = $conn->prepare("SELECT allowanceCycle FROM END_USER WHERE UID = ?");
 $stmt_current->bind_param("i", $uid);
 $stmt_current->execute();
@@ -16,7 +17,10 @@ $current_cycle = $stmt_current->get_result()->fetch_assoc()['allowanceCycle'] ??
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $newCycle = $_POST['allowanceCycle'];
-    $sql = "UPDATE END_USER SET allowanceCycle = ? WHERE UID = ?";
+    
+    // We update BOTH the cycle type AND reset the cycle start date to NOW().
+    // This prevents negative day calculations if scaling down from Monthly to Daily.
+    $sql = "UPDATE END_USER SET allowanceCycle = ?, cycleStartDate = NOW() WHERE UID = ?";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("si", $newCycle, $uid);
     $stmt->execute();
@@ -133,7 +137,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         .cancel-link:hover { color: var(--text); }
 
-        /* Custom Modal Styles */
         .modal-overlay {
             display: none;
             position: fixed;
@@ -172,7 +175,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <p>Change your pacing between Daily, Weekly, or Monthly.</p>
 
     <div class="info-box">
-        <strong>Warning:</strong> Changing this mid-cycle will recalculate your remaining daily budget based on the new timeframe instantly.
+        <strong>Warning:</strong> Changing this will immediately restart your cycle tracking from today to prevent budget pacing errors.
     </div>
 
     <form id="cycleForm" method="POST">
@@ -193,7 +196,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <div id="confirmModal" class="modal-overlay">
     <div class="modal-box">
         <h3>Is this information correct?</h3>
-        <p>You are about to modify your core database settings.</p>
+        <p>You are about to modify your core database settings and restart your current cycle.</p>
         <div class="modal-actions">
             <button class="modal-btn-cancel" onclick="closeModal()">Cancel</button>
             <button class="modal-btn-confirm" onclick="submitForm()">Yes, proceed</button>
