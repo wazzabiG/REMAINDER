@@ -32,20 +32,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     $conn->begin_transaction();
     try {
-        // 1. Update USER table (Handle password conditionally)
         if (!empty($newPassword)) {
-            // If admin typed a new password, hash it and update
             $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
             $stmt1 = $conn->prepare("UPDATE USER SET firstName=?, lastName=?, password=? WHERE UID=?");
             $stmt1->bind_param("sssi", $firstName, $lastName, $hashedPassword, $uid);
         } else {
-            // Otherwise, just update names
             $stmt1 = $conn->prepare("UPDATE USER SET firstName=?, lastName=? WHERE UID=?");
             $stmt1->bind_param("ssi", $firstName, $lastName, $uid);
         }
         $stmt1->execute();
 
-        // 2. Update ADMINISTRATOR table
         $stmt2 = $conn->prepare("UPDATE ADMINISTRATOR SET department=?, adminLevel=? WHERE UID=?");
         $stmt2->bind_param("ssi", $department, $adminLevel, $uid);
         $stmt2->execute();
@@ -164,6 +160,36 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             font-size: 0.9rem;
             font-weight: 600;
         }
+
+        /* Custom Modal Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(2px);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-box {
+            background: var(--card);
+            padding: 30px;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 350px;
+            text-align: center;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        .modal-box h3 { margin: 0 0 10px 0; color: var(--primary); }
+        .modal-box p { font-size: 0.9rem; color: #64748b; margin-bottom: 25px; }
+
+        .modal-actions { display: flex; gap: 10px; }
+        .modal-actions button { flex: 1; padding: 12px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; }
+        .modal-btn-cancel { background: #f1f5f9; color: #475569; }
+        .modal-btn-confirm { background: var(--accent); color: white; }
     </style>
 </head>
 <body>
@@ -172,7 +198,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <h2>Update Administrator</h2>
     <p class="subtitle">Modifying account for <strong><?= htmlspecialchars($admin['firstName']) ?> (AID: <?= $admin['AID'] ?>)</strong></p>
 
-    <form method="POST">
+    <form id="editForm" method="POST">
         <span class="section-label">Identity</span>
         <div class="form-row">
             <div class="form-group">
@@ -208,10 +234,34 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             </div>
         </div>
 
-        <button type="submit" class="btn-update">Save Changes</button>
+        <button type="button" class="btn-update" onclick="openModal()">Save Changes</button>
         <a href="index.php" class="cancel-link">Cancel and Go Back</a>
     </form>
 </div>
+
+<div id="confirmModal" class="modal-overlay">
+    <div class="modal-box">
+        <h3>Is this information correct?</h3>
+        <p>You are about to update this administrator's profile.</p>
+        <div class="modal-actions">
+            <button class="modal-btn-cancel" onclick="closeModal()">Cancel</button>
+            <button class="modal-btn-confirm" onclick="submitForm()">Yes, proceed</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    function openModal() {
+        const form = document.getElementById('editForm');
+        if (form.checkValidity()) {
+            document.getElementById('confirmModal').style.display = 'flex';
+        } else {
+            form.reportValidity();
+        }
+    }
+    function closeModal() { document.getElementById('confirmModal').style.display = 'none'; }
+    function submitForm() { document.getElementById('editForm').submit(); }
+</script>
 
 </body>
 </html>
