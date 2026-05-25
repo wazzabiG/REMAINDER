@@ -55,7 +55,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Register | Lutong Bahay</title>
+    <title>Register | Remainder</title>
     <style>
         :root {
             --primary: #1e293b;
@@ -201,7 +201,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <div class="reg-container">
     <div class="reg-card">
         <h2>Create Account</h2>
-        <p class="subtitle">Join Lutong Bahay and start pacing your budget.</p>
+        <p class="subtitle">Join Remainder and start pacing your budget.</p>
 
         <?php if(isset($error)): ?>
             <div class="error-msg">
